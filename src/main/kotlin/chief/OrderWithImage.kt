@@ -19,10 +19,9 @@ data class OrderWithImage(
         for ((pixel, weight) in weightedDifferenceList) {
             currentWeight += weight
             if (currentWeight >= random) {
-                return pixel to mainImage.getRGB(pixel.first, pixel.second)
+                return pixel to mainImage.getRGB(pixel.first - order.offset.x, pixel.second - order.offset.y)
             }
         }
-        println(order.offset)
         return 0 to 0 to 0
     }
 
@@ -44,7 +43,7 @@ data class OrderWithImage(
                 }
 
                 if (orderPixel != 0 && orderPixel != imagePixel) {
-                    incorrectPixels[i to j] = priority
+                    incorrectPixels[(i + order.offset.x) to (j + order.offset.y)] = priority
                 }
             }
         }
