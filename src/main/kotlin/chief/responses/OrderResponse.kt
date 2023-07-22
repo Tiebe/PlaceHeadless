@@ -34,7 +34,7 @@ data class OrderResponse(
         @SerialName("order")
         val order: String = "",
         @SerialName("priority")
-        val priority: String = ""
+        val priority: String? = null
     )
 
     @Serializable

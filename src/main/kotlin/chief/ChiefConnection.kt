@@ -10,6 +10,7 @@ import io.ktor.client.plugins.websocket.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.websocket.*
+import json
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.*
@@ -21,8 +22,6 @@ import kotlinx.serialization.json.*
  */
 class ChiefConnection(private val client: HttpClient) {
     var currentOrder: OrderWithImage? = null
-
-    private val json = Json { encodeDefaults = true }
 
     private lateinit var webSocketSession: DefaultWebSocketSession
 
@@ -84,9 +83,12 @@ class ChiefConnection(private val client: HttpClient) {
         val orderResponse = json.decodeFromJsonElement(OrderResponse.serializer(), order)
 
         val orderImage = client.get(orderResponse.images.order).readBytes()
-        val priorityImage = client.get(orderResponse.images.priority).readBytes()
-
-        currentOrder = OrderWithImage(orderResponse, orderImage, priorityImage)
+        currentOrder = if (orderResponse.images.priority != null) {
+            val priorityImage = client.get(orderResponse.images.priority).readBytes()
+            OrderWithImage(orderResponse, orderImage, priorityImage)
+        } else {
+            OrderWithImage(orderResponse, orderImage)
+        }
     }
 
 }
