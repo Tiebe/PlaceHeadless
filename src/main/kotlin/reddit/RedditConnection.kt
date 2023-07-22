@@ -33,6 +33,8 @@ import java.util.*
 import javax.imageio.ImageIO
 
 class RedditConnection(private val username: String, private val password: String) {
+    val palette = arrayOf("#6D001A", "#BE0039", "#FF4500", "#FFA800", "#FFD635", "#FFF8B8", "#00A368", "#00CC78", "#7EED56", "#00756F", "#009EAA", "#00CCC0", "#2450A4", "#3690EA", "#51E9F4", "#493AC1", "#6A5CFF", "#94B3FF", "#811E9F", "#B44AC0", "#E4ABFF", "#DE107F", "#FF3881", "#FF99AA", "#6D482F", "#9C6926", "#FFB470", "#000000", "#515252", "#898D90", "#D4D7D9", "#FFFFFF");
+
     private val redditClient = HttpClient {
         install(WebSockets) {
             contentConverter = KotlinxWebsocketSerializationConverter(Json)
@@ -185,6 +187,37 @@ class RedditConnection(private val username: String, private val password: Strin
         }
 
         return urls
+    }
+
+    fun getCanvasIndex(x: Int, y: Int): Int {
+        val canvas: Int = if (y < 1000) {
+            if (x < 1000) 0
+            else if (x >= 2000) 2
+            else 1
+        } else {
+            if (x < 1000) 3
+            else if (x >= 2000) 5
+            else 4
+        }
+
+        return canvas
+    }
+
+    fun getPixelIndex(x: Int, y: Int, canvasIndex: Int): Pair<Int, Int> {
+        val offsetX = when (canvasIndex) {
+            0, 3 -> -500
+            1, 4 -> 0
+            2, 5 -> 0
+            else -> 0
+        }
+
+        val offsetY = when (canvasIndex) {
+            0, 1, 2 -> -500
+            3, 4, 5 -> 0
+            else -> 0
+        }
+
+        return Pair(x - offsetX, y - offsetY)
     }
 
     suspend fun getFullCanvas(): BufferedImage? {
