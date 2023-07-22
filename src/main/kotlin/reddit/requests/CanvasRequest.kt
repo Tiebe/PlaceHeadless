@@ -4,10 +4,6 @@ package reddit.requests
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
-fun createCanvasRequest(id: String): CanvasRequest {
-    return CanvasRequest(payload = CanvasRequest.Payload(variables = CanvasRequest.Payload.Variables(input = CanvasRequest.Payload.Variables.Input(channel = CanvasRequest.Payload.Variables.Input.Channel(tag = id)))))
-}
-
 @Serializable
 data class CanvasRequest(
     @SerialName("id")
@@ -17,6 +13,7 @@ data class CanvasRequest(
     @SerialName("payload")
     val payload: Payload = Payload()
 ) {
+    constructor(id: String) : this(payload = CanvasRequest.Payload(variables = CanvasRequest.Payload.Variables(input = CanvasRequest.Payload.Variables.Input(channel = Payload.Variables.Input.Channel(tag = id)))))
     @Serializable
     data class Payload(
         @SerialName("variables")
