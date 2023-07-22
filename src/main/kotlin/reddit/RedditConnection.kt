@@ -14,15 +14,23 @@ import io.ktor.serialization.kotlinx.*
 import io.ktor.websocket.*
 import json
 import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.*
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.decodeFromJsonElement
+import kotlinx.serialization.json.jsonObject
 import org.jsoup.Jsoup
 import reddit.requests.CanvasRequest
 import reddit.requests.CooldownRequest
+import reddit.requests.PlacePixelRequest
 import reddit.requests.WSAuth
 import reddit.responses.CanvasResponse
 import reddit.responses.CooldownResponse
+import java.awt.image.BufferedImage
+import java.awt.image.RenderedImage
+import java.io.ByteArrayInputStream
 import java.text.SimpleDateFormat
-import java.util.Date
+import java.util.*
+import javax.imageio.ImageIO
 
 class RedditConnection(private val username: String, private val password: String) {
     private val redditClient = HttpClient {
@@ -163,7 +171,6 @@ class RedditConnection(private val username: String, private val password: Strin
                         continue
 
                     val garlicURL = canvasResponse.payload.data.subscribe.data.name
-                    println("Got canvas ${getProxiedURL(garlicURL)}")
                     urls.add(getProxiedURL(garlicURL))
 
                     if (canvases.isEmpty()) {
@@ -180,6 +187,35 @@ class RedditConnection(private val username: String, private val password: Strin
         return urls
     }
 
+    suspend fun getFullCanvas(): BufferedImage? {
+        val urls = getCanvases(mutableListOf(0, 1, 2, 3, 4, 5))
+
+        if (urls == null) {
+            println("Could not get full canvas")
+            return null
+        }
+
+        val canvas = BufferedImage(3000, 2000, BufferedImage.TYPE_INT_RGB)
+
+        var offsetX = 0
+        var offsetY = 0
+
+        urls.forEachIndexed { i, url ->
+            val byteSlice = client.get(url).readBytes()
+            val image = ImageIO.read(ByteArrayInputStream(byteSlice))
+            canvas.graphics.drawImage(image, offsetX, offsetY, null)
+
+            offsetX += 1000
+
+            if (i % 3 == 2) {
+                offsetX = 0
+                offsetY += 1000
+            }
+        }
+
+        return canvas.getSubimage(500, 500, 2000, 1000)
+    }
+
 
     suspend fun getCoolDown(): CooldownResponse? {
         getAccessToken()
@@ -189,23 +225,46 @@ class RedditConnection(private val username: String, private val password: Strin
             return null
         }
 
-        println(json.encodeToString(CooldownRequest()))
+        val response = client.post("https://gql-realtime-2.reddit.com/query") {
+            header("User-Agent", "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/111.0")
+            header("Referer", "https://www.reddit.com/")
+            contentType(ContentType.Application.Json)
+            bearerAuth(tokens!!.accessToken)
+            header("Origin", "https://www.reddit.com")
+            header("Sec-Fetch-Dest", "empty")
+            header("Sec-Fetch-Mode", "cors")
+            header("Sec-Fetch-Site", "same-site")
+            setBody(json.encodeToString(CooldownRequest()))
+        }
 
-        println(tokens!!.accessToken)
-        val requestBody = "{\"query\":\"mutation GetPersonalizedTimer{\\n  act(\\n    input: {actionName: \\\"r/replace:get_user_cooldown\\\"}\\n  ) {\\n    data {\\n      ... on BasicMessage {\\n        id\\n        data {\\n          ... on GetUserCooldownResponseMessageData {\\n            nextAvailablePixelTimestamp\\n          }\\n        }\\n      }\\n    }\\n  }\\n}\\n\\n\\nsubscription SUBSCRIBE_TO_CONFIG_UPDATE {\\n  subscribe(input: {channel: {teamOwner: GARLICBREAD, category: CONFIG}}) {\\n    id\\n    ... on BasicMessage {\\n      data {\\n        ... on ConfigurationMessageData {\\n          __typename\\n          colorPalette {\\n            colors {\\n              hex\\n              index\\n            }\\n          }\\n          canvasConfigurations {\\n            dx\\n            dy\\n            index\\n          }\\n          canvasWidth\\n          canvasHeight\\n        }\\n      }\\n    }\\n  }\\n}\\n\\n\\nsubscription SUBSCRIBE_TO_CANVAS_UPDATE {\\n  subscribe(\\n    input: {channel: {teamOwner: GARLICBREAD, category: CANVAS, tag: \\\"0\\\"}}\\n  ) {\\n    id\\n    ... on BasicMessage {\\n      id\\n      data {\\n        __typename\\n        ... on DiffFrameMessageData {\\n          currentTimestamp\\n          previousTimestamp\\n          name\\n        }\\n        ... on FullFrameMessageData {\\n          __typename\\n          name\\n          timestamp\\n        }\\n      }\\n    }\\n  }\\n}\\n\\n\\n\\n\\nmutation SET_PIXEL {\\n  act(\\n    input: {actionName: \\\"r/replace:set_pixel\\\", PixelMessageData: {coordinate: { x: 53, y: 35}, colorIndex: 3, canvasIndex: 0}}\\n  ) {\\n    data {\\n      ... on BasicMessage {\\n        id\\n        data {\\n          ... on SetPixelResponseMessageData {\\n            timestamp\\n          }\\n        }\\n      }\\n    }\\n  }\\n}\\n\\n\\n\\n\\n# subscription configuration(\$input: SubscribeInput!) {\\n#     subscribe(input: \$input) {\\n#       id\\n#       ... on BasicMessage {\\n#         data {\\n#           __typename\\n#           ... on RReplaceConfigurationMessageData {\\n#             colorPalette {\\n#               colors {\\n#                 hex\\n#                 index\\n#               }\\n#             }\\n#             canvasConfigurations {\\n#               index\\n#               dx\\n#               dy\\n#             }\\n#             canvasWidth\\n#             canvasHeight\\n#           }\\n#         }\\n#       }\\n#     }\\n#   }\\n\\n# subscription replace(\$input: SubscribeInput!) {\\n#   subscribe(input: \$input) {\\n#     id\\n#     ... on BasicMessage {\\n#       data {\\n#         __typename\\n#         ... on RReplaceFullFrameMessageData {\\n#           name\\n#           timestamp\\n#         }\\n#         ... on RReplaceDiffFrameMessageData {\\n#           name\\n#           currentTimestamp\\n#           previousTimestamp\\n#         }\\n#       }\\n#     }\\n#   }\\n# }\\n\",\"variables\":{\"input\":{\"channel\":{\"teamOwner\":\"GARLICBREAD\",\"category\":\"R_REPLACE\",\"tag\":\"canvas:0:frames\"}}},\"operationName\":\"GetPersonalizedTimer\",\"id\":null}"
+        return response.body()
+    }
+
+    suspend fun placePixel(x: Int, y: Int, colorIndex: Int, canvasIndex: Int) {
+        getAccessToken()
+
+        if (tokens == null) {
+            println("Could not place pixel")
+            return
+        }
 
         val response = client.post("https://gql-realtime-2.reddit.com/query") {
             header("User-Agent", "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/111.0")
             header("Referer", "https://www.reddit.com/")
             contentType(ContentType.Application.Json)
-            header("Authorization", "Bearer eyJhbGciOiJSUzI1NiIsImtpZCI6IlNIQTI1NjpzS3dsMnlsV0VtMjVmcXhwTU40cWY4MXE2OWFFdWFyMnpLMUdhVGxjdWNZIiwidHlwIjoiSldUIn0.eyJzdWIiOiJ1c2VyIiwiZXhwIjoxNjkwMTM0NjEyLjg4ODU3NCwiaWF0IjoxNjkwMDQ4MjEyLjg4ODU3NCwianRpIjoiTWpGSDdSS2czY2VidW9ZVDhlcDh5Vk9UV1NNMkdnIiwiY2lkIjoiOXRMb0Ywc29wNVJKZ0EiLCJsaWQiOiJ0Ml9nMDNkNWZ1YW8iLCJhaWQiOiJ0Ml9nMDNkNWZ1YW8iLCJsY2EiOjE2OTAwMzQyMzIzMDgsInNjcCI6ImVKeGtrZEdPOUNBSWhkLUZhNV9nZjVVX200MVZPa05XcFFIc1pONS1ZeXVkSm52VkEtZFQ0ZlFfWUkxVUlNQkdCQUZpU3R5YlFZQWttRE9aUWdETU5EcHJpU1FRNEVscUxHOElRQm1ia1ExWmFNY2FXM3dnQktpY0U3ZVZIcGMyb2FVYmk1NGR2NnB5TGp5cE9VZmwzTmptTFd4UDlETWJxMDJwV05aVG1jUjFwWFFXTF9vWk85UzM5dVV6X1NhMFI4T0txdkdCb3lNWThfSFpXTVppR3ZmeG5wcjBaRjB3cTczTFFXcGY2ckc3OWtXVDBESzRfUnh2dkRhVEdYSmVtcDdSX3QzMVMtakFQY19MOU5xQkdhdjdYcnJ0V2J0XzFRNVV6aWpSV0p6NE5CeTVjdmtldndUYk5lbGY0M1prTEw0WmNkTWJmbXM2T25KeDR0Q244ZlViQUFEX18xOFMyRkUiLCJyY2lkIjoiZVc4RXF5NTRaa2VRM001ZTViMEVxN2ZCUFFZck9Vc0dmd2V0cVZQU2hDSSIsImZsbyI6Mn0.qSyKszXgavxUeU35WQCHZkk9irMldKICZqIPwuwlNJZCWkd_NuZkX8pat23w05pZBUXe_WwbEh-eRaJyxCANzNKymIVIEzpxtbQpsvKAe4-uP0LiCs1Pb3DBVnyl5BIvlgm_MP0ZghlJvkRqSu-kocOPswjBNpyA71Y2Yao3ZaQWIs8lX1JVeAd4E3TwpbYNTRXTVLfPS1WQOAQg46vk9Y1QAa5qNwcwRHeBeSjJQ0gwOWxxnfOCc2TmITOp5KGkkHd2U4cP9cmnwqk5OtE9zTD2CNupKl0vn5S0o0Fho7ivFrxmDI_nCr51nYHct7JOk6ETgBkFbgfAM1uKMtCLyw")
+            bearerAuth(tokens!!.accessToken)
             header("Origin", "https://www.reddit.com")
             header("Sec-Fetch-Dest", "empty")
             header("Sec-Fetch-Mode", "cors")
             header("Sec-Fetch-Site", "same-site")
-            setBody(requestBody)
+            setBody(PlacePixelRequest(x, y, colorIndex, canvasIndex))
         }
 
-        return response.body()
+        if (response.status != HttpStatusCode.OK) {
+            println("Could not place pixel")
+            return
+        }
+
+        println("Placed pixel")
     }
 }

@@ -1,8 +1,10 @@
+import chief.ChiefConnection
 import io.ktor.client.*
 import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.plugins.cookies.*
 import io.ktor.client.plugins.websocket.*
 import io.ktor.serialization.kotlinx.*
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
@@ -24,15 +26,26 @@ val client = HttpClient {
 }
 
 fun main(args: Array<String>) {
-
-
     val redditConnection = RedditConnection("TwistSimple6647", "Tiebe1234!")
-    runBlocking { redditConnection.login()
-    redditConnection.getAccessToken()
-        redditConnection.getCanvases(mutableListOf(0,1,2,3,4,5))
-        redditConnection.getCoolDown()
+    val image = runBlocking { redditConnection.login()
+        redditConnection.getAccessToken()
+        //val urls = redditConnection.getCanvases(mutableListOf(0,1,2,3,4,5))
+        redditConnection.getFullCanvas()
     }
 
-/*    val chiefConnection = ChiefConnection(client)
-    chiefConnection.blockingConnect()*/
+    val chiefConnection = ChiefConnection(client)
+    runBlocking {
+        launch {
+            chiefConnection.orderListeners.add {
+                println("Received order: $it")
+                println(it.getNextPixel(it.getWeightedDifferenceList(image!!)))
+            }
+
+            chiefConnection.connect()
+        }
+    }
+
+
+
+
 }

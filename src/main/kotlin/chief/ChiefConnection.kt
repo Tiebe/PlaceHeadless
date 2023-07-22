@@ -14,6 +14,9 @@ import json
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.*
+import java.awt.image.BufferedImage
+import java.io.ByteArrayInputStream
+import javax.imageio.ImageIO
 
 /**
  * Wrapper for the connection to the Chief
@@ -22,6 +25,7 @@ import kotlinx.serialization.json.*
  */
 class ChiefConnection(private val client: HttpClient) {
     var currentOrder: OrderWithImage? = null
+    val orderListeners: MutableList<(OrderWithImage) -> Unit> = mutableListOf()
 
     private lateinit var webSocketSession: DefaultWebSocketSession
 
@@ -75,20 +79,25 @@ class ChiefConnection(private val client: HttpClient) {
         webSocketSession.send(Frame.Text(json.encodeToString(SubscribeMessage(channel = channel))))
     }
 
-    private suspend fun getOrders() {
+    suspend fun getOrders() {
         webSocketSession.send(Frame.Text(json.encodeToString(OrderMessage())))
     }
 
     private suspend fun handleOrder(order: JsonElement) {
         val orderResponse = json.decodeFromJsonElement(OrderResponse.serializer(), order)
 
-        val orderImage = client.get(orderResponse.images.order).readBytes()
+        val orderImage = BufferedImage(orderResponse.size.width, orderResponse.size.height, BufferedImage.TYPE_INT_ARGB)
+        orderImage.graphics.drawImage(ImageIO.read(ByteArrayInputStream(client.get(orderResponse.images.order).readBytes())), 0, 0, null)
         currentOrder = if (orderResponse.images.priority != null) {
-            val priorityImage = client.get(orderResponse.images.priority).readBytes()
+            val priorityImage = BufferedImage(orderResponse.size.width, orderResponse.size.height, BufferedImage.TYPE_INT_ARGB)
+            priorityImage.graphics.drawImage(ImageIO.read(ByteArrayInputStream(client.get(orderResponse.images.priority).readBytes())), 0, 0, null)
             OrderWithImage(orderResponse, orderImage, priorityImage)
-        } else {
+        }
+        else {
             OrderWithImage(orderResponse, orderImage)
         }
+
+        orderListeners.forEach { it(currentOrder!!) }
     }
 
 }
